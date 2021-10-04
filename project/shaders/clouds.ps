@@ -1,0 +1,71 @@
+#include "common/project.hlsl"
+#include "common/raycast.hlsl"
+#include "common/vs_post_out.hlsl"
+#include "common/math.hlsl"
+#include "common/light.hlsl"
+#include "common/sky.hlsl"
+#include "cloud_density.hlsl"
+
+static const uint MARCH_ITERATIONS = 12;
+static const uint LIGHT_MARCH_ITERATIONS = 3;
+static const float LIGHT_STEP_LENGTH = 300;
+static const float PHASE_FUNCTION = 1 / (4 * M_PI);
+static const float TRANSMITTANCE_THRESHOLD = 0.001;
+
+SamplerState smp : register(s0);
+Texture2D world_pos_map : register(t0);
+
+void add_sample(inout float3 scattered_light, inout float transmittance, float3 world_pos, float step_length) {
+    float shadow_light = 1;
+    for (uint i = 0; i < LIGHT_MARCH_ITERATIONS; i++) {
+        float3 world_shadow_pos = world_pos + light_direction * i * LIGHT_STEP_LENGTH;
+        float sigma_s = cloud_density(world_shadow_pos) * 8;
+        float sigma_e = max(0.000000001, sigma_s);
+        shadow_light *= exp(-sigma_e * LIGHT_STEP_LENGTH);
+    }
+
+    float3 incoming_light = lerp(scatter_color, sky_color, shadow_light);
+
+    float sigma_s = cloud_density(world_pos);
+    float sigma_e = max(0.000000001, sigma_s);
+    float3 s = incoming_light * sigma_s * PHASE_FUNCTION;
+    float3 s_int = (s - s * exp(-sigma_e * step_length)) / sigma_e;
+    scattered_light += transmittance * s_int;
+    transmittance *= exp(-sigma_e * step_length);
+}
+
+float4 main(VSPostOut input) : SV_Target0 {
+    Ray ray = project_ray(tex_to_clip_coord(input.tex));
+    float nearest_dist = plane_intersection(ray, float3(0, cloud_y, 0), float3(0, 1, 0));
+    float furthest_dist = plane_intersection(ray, float3(0, cloud_y + cloud_height, 0), float3(0, 1, 0));
+    
+    nearest_dist = max(nearest_dist, 0);
+    furthest_dist = max(furthest_dist, 0);
+    furthest_dist = min(furthest_dist, world_pos_map.SampleLevel(smp, input.tex, 0).w);
+
+    if (furthest_dist <= nearest_dist) {
+        return float4(0, 0, 0, 0);
+    }
+
+    float march_dist = furthest_dist - nearest_dist;
+    float step_length = march_dist / MARCH_ITERATIONS;
+    float3 scattered_light = 0;
+    float transmittance = 1;
+    for (uint i = 0; i < MARCH_ITERATIONS; i++) {
+        float3 world_pos = ray.origin + ray.direction * (nearest_dist + i * step_length);
+        add_sample(scattered_light, transmittance, world_pos, step_length);
+
+        if (transmittance < TRANSMITTANCE_THRESHOLD) {
+            transmittance = 0;
+            break;
+        }
+    }
+
+    float fog_exp = 0.0000015;
+    float t = nearest_dist * fog_exp;
+    float fog_amt = 1 / exp(t * t);
+    fog_amt *= cloud_opacity;
+    //transmittance *= fog_amt;
+
+    return float4(scattered_light * (1 - transmittance) * fog_amt, (1 - transmittance) * fog_amt);
+}

@@ -1,0 +1,24 @@
+[workspace]
+
+members = [
+    "engine",
+    "player",
+    "player_resources",
+    "tool",
+    "tool_derive",
+    "tool_resources",
+    "vendor/bass-sys",
+    "vendor/imgui-sys",
+    "vendor/wavesabre-sys"
+]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+debug = false
+overflow-checks = false
+panic = "abort"
+lto = true
+opt-level = 'z'
+codegen-units = 1

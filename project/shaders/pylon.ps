@@ -1,0 +1,43 @@
+#include "common/vs_out.hlsl"
+#include "common/ps_out.hlsl"
+#include "common/camera.hlsl"
+#include "common/light.hlsl"
+#include "common/pbr.hlsl"
+
+PSOut main(VSOut input) {
+    float3 albedo;
+    float metallic;
+    float roughness;
+    float3 emissive;
+
+    if (input.uv.x == 0) {
+        // Main pylon metal
+        albedo = 1;
+        metallic = 0.7;
+        roughness = 0.8;
+        emissive = 0;
+    } else {
+        // Plastic red thing
+        albedo = float3(1, 0.1, 0.1);
+        metallic = 0;
+        roughness = 1;
+        emissive = 0;
+    }
+
+    PSOut output;
+    output.color = float4(
+        (get_light_radiance(
+            input.normal,
+            albedo,
+            metallic,
+            roughness,
+            normalize(camPosition.xyz - input.world_pos),
+            worldLightDirection.xyz
+        ) + albedo * worldLightAmbient) * worldLightColor.rgb + emissive,
+        1
+    );
+    output.normal = float4(input.normal, 0);
+    output.world_pos = float4(input.world_pos, input.position.w);
+
+    return output;
+}

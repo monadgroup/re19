@@ -1,0 +1,69 @@
+#include "common/vs_post_out.hlsl"
+
+static const float A = 0.15;
+static const float B = 0.50;
+static const float C = 0.10;
+static const float D = 0.20;
+static const float E = 0.02;
+static const float F = 0.30;
+static const float W = 11.2;
+
+SamplerState smp : register(s0);
+Texture2D lit_map : register(t0);
+
+cbuffer Grading : register(b1) {
+    float2 vignette_offset;
+    float exposure;
+    float fade;
+    float3 curve;
+    float vignette_strength;
+    float3 gradient_color_a;
+    float vignette_size;
+    float3 gradient_color_b;
+    float vignette_power;
+    float2 gradient_pos_a;
+    float2 gradient_pos_b;
+    float gradient_dry_wet;
+
+    float tonemap_a;
+    float tonemap_b;
+    float tonemap_c;
+    float tonemap_d;
+    float tonemap_e;
+    float tonemap_f;
+    float tonemap_w;
+}
+
+float3 tonemap(float3 x) {
+    return ((x*(tonemap_a*x+tonemap_c*tonemap_b)+tonemap_d*tonemap_e)/(x*(tonemap_a*x+tonemap_b)+tonemap_d*tonemap_f))-tonemap_e/tonemap_f;
+}
+
+float4 main(VSPostOut input) : SV_TARGET0 {
+    float3 tex_color = lit_map.SampleLevel(smp, input.tex, 0).rgb;
+
+    // vignette
+    float d = length((input.tex + vignette_offset) * 2 - 1) - vignette_size;
+    tex_color = tex_color * saturate(1 - saturate(pow(d, vignette_power) * vignette_strength));
+
+    tex_color = pow(tex_color, curve);
+
+    // gradient overlay
+    float2 a_to_p = input.tex - gradient_pos_a;
+    float2 a_to_b = gradient_pos_b - gradient_pos_a;
+    float atb2 = dot(a_to_b, a_to_b);
+    float atp_dot_atb = dot(a_to_p, a_to_b);
+    float t = saturate(atp_dot_atb / atb2);
+    float3 gradient_color = lerp(gradient_color_a, gradient_color_b, t);
+    tex_color = lerp(tex_color, tex_color * gradient_color, gradient_dry_wet);
+
+    // tonemapping
+    float3 curr = tonemap(tex_color * exposure);
+    float3 white_scale = 1 / tonemap(tonemap_w);
+    float3 tonemapped_color = saturate(curr * white_scale);
+    tonemapped_color *= fade;
+    //float3 tonemapped_color = saturate(tex_color);
+
+    // gamma correct
+    float3 corrected_color = pow(tonemapped_color, 1 / 2.2);
+    return float4(corrected_color, 1);
+}

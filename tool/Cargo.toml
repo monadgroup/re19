@@ -1,0 +1,19 @@
+[package]
+name = "tool"
+version = "0.1.0"
+authors = ["cpdt <copodt@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+libc = { version = "0.2", default-features = false }
+winapi = { version = "0.3", features = ["debugapi", "heapapi", "windef", "winuser", "dxgi", "d3d11", "d3dcompiler", "d3d11sdklayers"] }
+engine = { path = "../engine", features = ["tool"] }
+path_abs = { version = "0.4" }
+imgui-sys = { path = "../vendor/imgui-sys" }
+bass-sys = { path = "../vendor/bass-sys" }
+field-offset = "0.1"
+serde = "1.0"
+ron = "0.4"
+chrono = "0.4"
+regex = "1.1"
+lazy_static = "1.3"

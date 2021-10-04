@@ -1,0 +1,8 @@
+[package]
+name = "player_resources"
+version = "0.1.0"
+authors = ["cpdt <copodt@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+winapi = { version = "0.3", features = ["debugapi", "heapapi", "windef", "winuser", "dxgi", "d3d11", "d3dcompiler"] }

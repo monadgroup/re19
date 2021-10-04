@@ -1,0 +1,43 @@
+#include "common/vs_post_out.hlsl"
+
+SamplerState smp : register(s0);
+Texture2D   base : register(t0);
+Texture2D   tex0 : register(t1);
+Texture2D   tex1 : register(t2);
+Texture2D   tex2 : register(t3);
+Texture2D   tex3 : register(t4);
+Texture2D   tex4 : register(t5);
+Texture2D   tex5 : register(t6);
+
+cbuffer BloomCompositeData : register(b1) {
+    float bloom_shape;
+    float bloom_multiplier;
+    float bloom_bias;
+    float bloom_power;
+    float bloom_amount;
+}
+
+float4 main(VSPostOut input) : SV_TARGET {
+    float4 samples[7] = {
+        base.SampleLevel(smp, input.tex, 0),
+        tex0.SampleLevel(smp, input.tex, 0),
+        tex1.SampleLevel(smp, input.tex, 0),
+        tex2.SampleLevel(smp, input.tex, 0),
+        tex3.SampleLevel(smp, input.tex, 0),
+        tex4.SampleLevel(smp, input.tex, 0),
+        tex5.SampleLevel(smp, input.tex, 0),
+    };
+
+    float4 bloom_sum = 0;
+    float weight_sum = 0;
+    for (int i = 0; i < 7; i++) {
+        float weight = pow(1 + i, bloom_shape);
+        bloom_sum += samples[i] * weight;
+        weight_sum += weight;
+    }
+
+    float4 bloom_color = bloom_sum / weight_sum;
+    float4 base_color = base.SampleLevel(smp, input.tex, 0);
+
+    return base_color + pow(max(bloom_color * bloom_multiplier + bloom_bias, 0), bloom_power) * bloom_amount;
+}

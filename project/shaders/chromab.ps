@@ -1,0 +1,29 @@
+#include "common/vs_post_out.hlsl"
+#include "common/frame_data.hlsl"
+
+SamplerState smp : register(s0);
+Texture2D lit_map : register(t0);
+
+cbuffer ChromabData : register(b1) {
+    float chromab_amount;
+    float grain_amount;
+}
+
+float4 main(VSPostOut input) : SV_TARGET0 {
+    float dist_to_center = distance(input.tex, 0.5) * 2 * chromab_amount;
+    float3 color = float3(
+        lit_map.SampleLevel(smp, input.tex + float2(0, 1) * dist_to_center / viewportSize, 0).r,
+        lit_map.SampleLevel(smp, input.tex + float2(-0.866, -0.5) * dist_to_center / viewportSize, 0).g,
+        lit_map.SampleLevel(smp, input.tex + float2(0.866, -0.5) * dist_to_center / viewportSize, 0).b
+    );
+
+    float grain_strength = 50 * grain_amount;
+    float x = (input.tex.x + 4) * (input.tex.y + 4) * (frameSeed + 10) * 10;
+    float grain = saturate((((x % 13) + 1) * ((x % 123) + 1) % 0.01) - 0.005) * grain_strength;
+    color *= 1 - grain;
+
+    // un gamma correct
+    //color = pow(color, 2.2);
+
+    return float4(color, 1);
+}

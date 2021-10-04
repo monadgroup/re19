@@ -1,0 +1,118 @@
+#include "common/vs_post_out.hlsl"
+#include "common/project.hlsl"
+#include "common/noise.hlsl"
+#include "common/camera.hlsl"
+static const bool BOOSTER_ATTACHMENTS = false;
+#include "distance_fields/rocket.hlsl"
+
+static const uint GRADIENT_COUNT = 9;
+static const int MAX_ITERATIONS = 80;
+static const float3 SUN_DIRECTION = normalize(float3(0, 1, 2));
+
+cbuffer GradientData : register(b2) {
+    float3 rocket_pos;
+    float rocket_size;
+    float booster_separation;
+    float brightness;
+    float3 colors[GRADIENT_COUNT + 1];
+    float2 height_curves[GRADIENT_COUNT];
+}
+
+float cloud_heightmap(float2 pos) {
+    pos.y += 18;
+    //pos.x += 0.5;
+    pos /= 1.3;
+
+    return pow(fbm_procedural(float3(pos/4, 0)), 9)*10;
+}
+
+float3 cloud_normal(float2 pos) {
+    float off = 0.1;
+    float h01 = cloud_heightmap(pos + float2(-off, 0));
+    float h21 = cloud_heightmap(pos + float2(off, 0));
+    float h10 = cloud_heightmap(pos + float2(0, -off));
+    float h12 = cloud_heightmap(pos + float2(0, off));
+    float3 va = normalize(float3(off * 2, h21 - h01, 0));
+    float3 vb = normalize(float3(0, h12 - h10, off * -2));
+    return cross(va, vb);
+}
+
+struct SceneOutput {
+    float dist;
+    float ao;
+};
+
+SceneOutput fScene(float3 p) {
+    SceneOutput output;
+    p = (p - rocket_pos) / rocket_size;
+
+
+    float bodyDist, boosterDist, boosterSide, ao;
+    float3 boosterP;
+    fRocketBody(p, bodyDist, boosterSide, boosterP);
+    //boosterP += float3(-3, 0, 0);
+    boosterP.x -= booster_separation;
+    boosterP.y += booster_separation/5;
+    pR(boosterP.xy, -booster_separation/5);
+    fRocketBooster(boosterP, bodyDist, boosterDist, ao);
+    output.dist = min(bodyDist, boosterDist);
+
+    output.dist *= rocket_size;
+    return output;
+}
+
+float3 lightScene(float3 p, float3 n, float3 d, float ao) {
+    return 0;
+}
+
+float3 lightSky(float3 dir) {
+    float total_height = height_curves[GRADIENT_COUNT - 1].x;
+
+    float gradient_y = total_height / 2 - dir.y;
+    gradient_y = clamp(gradient_y, 0, total_height);
+
+    float3 color = 0;
+    float last_curve_height = 0;
+    for (uint i = 0; i < GRADIENT_COUNT; i++) {
+        float curve_y = (gradient_y - last_curve_height) / (height_curves[i].x - last_curve_height);
+        float3 segment_color = lerp(colors[i], colors[i + 1], saturate(pow(curve_y, height_curves[i].y)));
+        color = lerp(color, segment_color, step(0, curve_y));
+        last_curve_height = height_curves[i].x;
+    }
+
+    // Add streaks to the 1-th curve
+    float streak_mask = step(height_curves[1].x, gradient_y) * step(gradient_y, (height_curves[1].x + height_curves[2].x) / 2);
+    float streak_amt = 1 - pow(saturate(fbm_procedural(dir*float3(1, 80, 80)-float3(0,0.1,0)))*1.6, 5) * 0.8;
+    //streak_amt *= saturate(dot(dir, SUN_DIRECTION));
+    color *= lerp(1, streak_amt, streak_mask);
+
+    //float sunburst_mask = step(height_curves[1].x, gradient_y) * step(gradient_y, height_curves[2].x);
+    //float sunburst_amt = pow(saturate(1-abs(dir.x+0.04)*10), 2)*4;
+    //color *= lerp(1, 1+sunburst_amt, sunburst_mask);
+
+    // Add dark areas to the 5+6-th curve
+    float spot_y = (gradient_y - height_curves[5].x) / (height_curves[7].x - height_curves[5].x);
+    float spot_mask = step(0, spot_y) * step(spot_y, 1);
+    
+    // skew the X direction slightly by height to give the appearance of perspective
+    float3 spot_dir = dir;
+    spot_dir.x -= (1 - spot_y)*spot_dir.x*0.4;
+    spot_dir.y *= 3;
+    //spot_dir.y += 3;
+
+    float3 spot_normal = cloud_normal(spot_dir.xy*100);
+    float spot_brightness = dot(SUN_DIRECTION, spot_normal)*2 + 0.2;
+    float spot_amt = max(0, spot_brightness);
+    color *= lerp(1, spot_amt, spot_mask);
+
+    return color * brightness;
+}
+
+#include "common/raymarch.hlsl"
+
+float4 main(VSPostOut input) : SV_Target0 {
+    float4 color, normal, world_pos;
+    float depth;
+    raymarch(input.tex, zRange.y, color, normal, world_pos, depth);
+    return color;
+}

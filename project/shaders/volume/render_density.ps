@@ -1,0 +1,61 @@
+#include "../common/math.hlsl"
+#include "../common/project.hlsl"
+#include "../common/vs_post_out.hlsl"
+#include "../common/raycast.hlsl"
+#include "volume_data.hlsl"
+
+static const uint MARCH_MAX_ITERATIONS = 256;
+static const float MARCH_STEP_LENGTH = 0.05;
+
+static const float PHASE_FUNCTION = 1 / (4 * M_PI);
+static const float TRANSMITTANCE_THRESHOLD = 0.001;
+
+SamplerState smp : register(s0);
+
+Texture3D density : register(t0);
+Texture3D light_map : register(t1);
+Texture2D world_pos : register(t2);
+
+void add_sample(inout float3 scattered_light, inout float transmittance, float3 world_pos, float step_length) {
+    float3 light_map_pos = mul(float4(world_pos, 1), world_to_light_map).xyz;
+    float2 light_intensities = light_map.SampleLevel(smp, light_map_pos, 0).xy;
+    float3 incoming_light = directional_light_color * light_intensities.x + point_light_color * light_intensities.y + ambient_light_color;
+
+    float3 density_pos = mul(float4(world_pos, 1), world_to_density).xyz;
+    float sigma_s = density.SampleLevel(smp, density_pos, 0).x;
+    float sigma_e = max(0.000000001, sigma_s);
+    float3 s = incoming_light * sigma_s * PHASE_FUNCTION;
+    float3 s_int = (s - s * exp(-sigma_e * step_length)) / sigma_e;
+    scattered_light += transmittance * s_int;
+    transmittance *= exp(-sigma_e * step_length);
+}
+
+float4 main(VSPostOut input) : SV_Target {
+    Ray ray = project_ray(tex_to_clip_coord(input.tex));
+    BoxIntersection intersect = find_intersection(ray, world_density_pos, world_density_pos + world_density_size);
+    intersect.nearest_dist = max(intersect.nearest_dist, 0);
+    intersect.furthest_dist = max(intersect.furthest_dist, 0);
+    intersect.furthest_dist = min(intersect.furthest_dist, world_pos.SampleLevel(smp, input.tex, 0).w);
+
+    if (intersect.furthest_dist <= intersect.nearest_dist) {
+        discard;
+    }
+
+    float march_dist = intersect.furthest_dist - intersect.nearest_dist;
+    uint step_count = min(march_dist / MARCH_STEP_LENGTH, MARCH_MAX_ITERATIONS);
+
+    float3 scattered_light = 0;
+    float transmittance = 1;
+    for (uint i = 0; i < step_count; i++) {
+        float3 world_pos = ray.origin + ray.direction * (intersect.nearest_dist + i * MARCH_STEP_LENGTH);
+        add_sample(scattered_light, transmittance, world_pos, MARCH_STEP_LENGTH);
+
+        if (transmittance < TRANSMITTANCE_THRESHOLD) {
+            transmittance = 0;
+            break;
+        }
+    }
+    add_sample(scattered_light, transmittance, ray.origin + ray.direction * intersect.furthest_dist, intersect.furthest_dist - intersect.nearest_dist - step_count*MARCH_STEP_LENGTH);
+
+    return float4(scattered_light * (1 - transmittance), 1 - transmittance);
+}

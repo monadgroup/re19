@@ -1,0 +1,71 @@
+#include "common/vs_post_out.hlsl"
+#include "common/project.hlsl"
+#include "common/light.hlsl"
+#include "common/math.hlsl"
+#include "common/sky.hlsl"
+
+SamplerState smp : register(s0);
+Texture2D world_pos_map : register(t0);
+Texture2D shadow_map : register(t1);
+Texture3D deep_shadow_map : register(t2);
+
+static const uint MAX_ITERATIONS = 400;
+
+static const float DENSITY = 0.00;
+static const float PHASE_FUNCTION = 1 / (4 * M_PI);
+
+cbuffer GodrayData : register(b2) {
+    matrix world_to_shadow_map;
+    matrix world_to_deep_shadow_map;
+    float density;
+    uint iterations;
+    float step_length;
+    float start_distance;
+    uint enable_deep_shadow_map;
+};
+
+float4 main(VSPostOut input) : SV_Target0 {
+    Ray ray = project_ray(tex_to_clip_coord(input.tex));
+
+    uint real_iterations = min(iterations, MAX_ITERATIONS);
+    float max_distance = min(
+        real_iterations * step_length,
+        world_pos_map.SampleLevel(smp, input.tex, 0).w
+    );
+    uint step_count = max_distance / step_length;
+    
+    float3 sun_color = compute_sky_light(camPosition.xyz + float3(0, 1 + EARTH_RS, 0), normalize(worldLightDirection.xyz + 0.001));
+
+    float3 scattered_light = 0;
+    float transmittance = 1;
+    for (uint i = 0; i < step_count; i++) {
+        float3 world_pos = ray.origin + ray.direction * (start_distance + step_length * i);
+        if (world_pos.y > 40) break;
+
+        float4 shadow_clip_pos = mul(float4(world_pos, 1), world_to_shadow_map);
+        float3 shadow_tex_pos = (shadow_clip_pos.xyz / shadow_clip_pos.w);
+        shadow_tex_pos.xy = shadow_tex_pos.xy * 0.5 + 0.5;
+
+        shadow_tex_pos.y = 1 - shadow_tex_pos.y;
+        float shadow_map_depth = shadow_map.SampleLevel(smp, shadow_tex_pos.xy, 0).x;
+        float light_intensity = step(shadow_tex_pos.z, shadow_map_depth);
+
+        if (enable_deep_shadow_map) {
+            float3 deep_shadow_pos = mul(float4(world_pos, 1), world_to_deep_shadow_map).xyz;
+            if (all(deep_shadow_pos >= 0) && all(deep_shadow_pos < 1)) {
+                light_intensity *= deep_shadow_map.SampleLevel(smp, deep_shadow_pos, 0).x;
+            }
+        }
+
+        float3 incoming_light = sun_color * light_intensity;
+
+        float sigma_s = min(0.0004, max(0, -world_pos.y+40) * 0.0001) * density;
+        float sigma_e = max(0.000000001, sigma_s);
+        float3 s = incoming_light * sigma_e * PHASE_FUNCTION;
+        float3 s_int = (s - s * exp(-sigma_e * step_length)) / sigma_e;
+        scattered_light += transmittance * s_int;
+        transmittance *= exp(-sigma_e * step_length);
+    }
+
+    return float4(scattered_light * (1 - transmittance), 1 - transmittance);
+}

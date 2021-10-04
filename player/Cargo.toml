@@ -1,0 +1,14 @@
+[package]
+name = "player"
+version = "0.1.0"
+authors = ["cpdt <copodt@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+winapi = { version = "0.3", features = ["processenv", "timeapi", "processthreadsapi", "errhandlingapi", "debugapi", "libloaderapi", "heapapi", "windef", "winuser", "dxgi", "d3d11", "d3dcompiler"] }
+engine = { path = "../engine", features = ["player"], default-features = false }
+wavesabre-sys = { path = "../vendor/wavesabre-sys" }
+
+[build-dependencies]
+cc = "1.0"
+windres = "0.2"

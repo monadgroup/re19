@@ -1,0 +1,17 @@
+#include "common/vs_post_out.hlsl"
+#include "common/ps_out.hlsl"
+#include "common/project.hlsl"
+#include "common/sky.hlsl"
+
+PSOut main(VSPostOut input) {
+    // calculate ray direction by projecting a line out of the screen
+    float3 dir = project_ray(tex_to_clip_coord(input.tex)).direction;
+
+    float3 sky_color = compute_sky_light(camPosition.xyz + float3(0, 1 + EARTH_RS, 0), dir);
+
+    PSOut output;
+    output.color = float4(sky_color, 1);
+    output.normal = float4(-dir, 0);
+    output.world_pos = float4(camPosition.xyz + dir * zRange.y, 900000);
+    return output;
+}

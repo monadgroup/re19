@@ -1,0 +1,16 @@
+#include "common/vs_post_out.hlsl"
+
+SamplerState smp : register(s0);
+Texture2D lit_map : register(t0);
+
+cbuffer BloomExtractData : register(b1) {
+    float multiplier;
+    float bias;
+    float power;
+    float amount;
+};
+
+float4 main(VSPostOut input) : SV_TARGET {
+    float4 color = lit_map.SampleLevel(smp, input.tex, 0);
+    return pow(max(color * multiplier + bias, 0), power) * amount;
+}

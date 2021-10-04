@@ -1,0 +1,10 @@
+#include "common/vs_out.hlsl"
+#include "common/ps_out.hlsl"
+
+PSOut main(VSOut input) {
+    PSOut output;
+    output.color = float4(0.01, 0.01, 0.01, 1);
+    output.normal = float4(input.normal, 0);
+    output.world_pos = float4(input.world_pos, input.position.w);
+    return output;
+}

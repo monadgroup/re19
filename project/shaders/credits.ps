@@ -1,0 +1,13 @@
+#include "common/vs_post_out.hlsl"
+
+SamplerState smp : register(s0);
+Texture2D lit_map : register(t0);
+
+cbuffer CreditData : register(b2) {
+    float fade;
+}
+
+float4 main(VSPostOut input) : SV_Target {
+    float brightness = lit_map.SampleLevel(smp, input.tex, 0).r;
+    return brightness * fade;
+}

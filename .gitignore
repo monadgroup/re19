@@ -1,0 +1,6 @@
+cmake-build-*/
+target/
+.idea/
+.vscode/
+tool/export_shader_output.hlsl
+project/data.blob

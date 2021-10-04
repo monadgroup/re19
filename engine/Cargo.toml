@@ -1,0 +1,23 @@
+[package]
+name = "engine"
+version = "0.1.0"
+authors = ["cpdt <copodt@gmail.com>"]
+edition = "2018"
+
+[features]
+default = ["tool"]
+tool = ["lazy_static", "tool_resources", "tool_derive"]
+player = ["player_resources"]
+
+[dependencies]
+winapi = { version = "0.3", features = ["debugapi", "heapapi", "windef", "winuser", "dxgi", "d3d11", "d3dcompiler"] }
+libc = { version = "0.2", default-features = false }
+field-offset = "0.1"
+
+lazy_static = { version = "1.3", optional = true }
+tool_resources = { path = "../tool_resources", optional = true }
+tool_derive = { path = "../tool_derive", optional = true }
+player_resources = { path = "../player_resources", optional = true }
+
+[build-dependencies]
+cc = "1.0"

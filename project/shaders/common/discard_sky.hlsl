@@ -1,0 +1,1 @@
+float3 lightSky(float3 l){discard;return 0;}

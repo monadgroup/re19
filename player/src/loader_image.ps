@@ -1,0 +1,15 @@
+SamplerState smp : register(s0);
+Texture2D tex : register(t0);
+
+struct VSOut {
+    float4 sv_pos: SV_POSITION;
+    float2 tex_pos : TEXCOORD;
+};
+
+cbuffer ImageData {
+    float alpha;
+};
+
+float4 main(VSOut input) : SV_TARGET {
+    return tex.SampleLevel(smp, input.tex_pos, 0) * alpha;
+}

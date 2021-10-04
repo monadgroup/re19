@@ -1,0 +1,103 @@
+#include "common/math.hlsl"
+#include "common/light.hlsl"
+#include "common/pbr.hlsl"
+#include "common/vs_post_out.hlsl"
+static const bool BOOSTER_ATTACHMENTS = true;
+#include "distance_fields/rocket.hlsl"
+#include "fluid/fluid_render_data.hlsl"
+
+struct SceneOutput {
+    float dist;
+    float ao;
+};
+
+SceneOutput fScene(float3 p) {
+    p.y -= 1;
+    p.y -= rocket_height;
+
+    float dist;
+    float rocketAo;
+    float boosterSide;
+    float3 boosterP;
+    fRocket(p, dist, rocketAo, boosterSide, boosterP);
+
+    boosterP.y += rocket_height;
+    p.y += rocket_height;
+    float boosterPlatformDist = fBoxCheap(boosterP + float3(0, 3.3, 0), float3(0.5, 0.8, 1));
+    dist = min(dist, boosterPlatformDist);
+
+    float corePlatformDist = fBoxCheap(p + float3(0, 1.5, 0), 1);
+    dist = min(dist, corePlatformDist);
+
+    SceneOutput output;
+    output.dist = dist;
+    output.ao = rocketAo;
+    return output;
+}
+
+float shadow(float3 ro, float3 rd, float mint, float maxt, float k) {
+    float res = 1;
+    for (float t = mint; t < maxt;) {
+        float h = fScene(ro + rd * t).dist;
+        if (h < 0.001) return 0;
+        res = min(res, k * h / t);
+        t += h;
+    }
+    return res;
+}
+
+float3 lightScene(float3 p, float3 n, float3 d, float ao) {
+    float3 albedo = 0;//n * 0.5 + 0.5;
+    float metallic = 0;
+    float roughness = 0;
+    float3 emissive = 0;
+
+    if (p.y < 1.32) {
+        ao = 1;
+    } else {
+        float3 matP = p;
+        matP.y -= 1;
+        matP.y -= rocket_height;
+        rocketMaterial(matP, n, albedo, metallic, roughness, emissive);
+    }
+
+    float3 lit_color = albedo * worldLightAmbient * (1-pow(1-ao,10)) * worldLightColor.rgb;
+
+    lit_color += get_light_radiance(
+        n,
+        albedo,
+        metallic,
+        roughness,
+        -d,
+        worldLightDirection.xyz
+    ) * worldLightColor.rgb;
+
+    if (use_point_light) {
+        float norm_dist = distance(p, point_light_world_pos) * 300;
+        float att = 1. / (1 + 0.2 * norm_dist + 0.3 * norm_dist * norm_dist);
+        float point_ao = 1 - pow(1 - ao, 10);
+
+        float3 ambient_color = att * light_color * albedo * point_ao * 30;
+        lit_color += ambient_color;
+
+        //lit_color += albedo * att * light_color;
+    }
+
+    return lit_color;
+}
+
+static const int MAX_ITERATIONS = 250;
+
+#include "common/discard_sky.hlsl"
+#include "common/raymarch.hlsl"
+
+void main(VSPostOut input, out float4 color : SV_Target0, out float4 normal : SV_Target1, out float4 world_pos : SV_Target2, out float depth : SV_Depth) {
+    raymarch(
+        input.tex,
+        zRange.y,
+        color,
+        normal,
+        world_pos,
+        depth
+    );
+}

@@ -1,0 +1,20 @@
+#include "common/vs_out.hlsl"
+#include "common/ps_out.hlsl"
+#include "common/camera.hlsl"
+
+cbuffer TerrainData : register(b4) {
+    float3 fog_color;
+    float fog_exp;
+};
+
+PSOut main(VSOut input) {
+    float dist = distance(input.world_pos, camPosition);
+    float t = dist * fog_exp;
+    float fog_amt = 1 / exp(t*t);
+
+    PSOut output;
+    output.color = float4(lerp(fog_color, 0, fog_amt), 1);
+    output.normal = 0;
+    output.world_pos = float4(input.world_pos, dist);
+    return output;
+}

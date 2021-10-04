@@ -1,0 +1,115 @@
+#include "common/math.hlsl"
+#include "common/pbr.hlsl"
+#include "common/noise.hlsl"
+#include "common/vs_post_out.hlsl"
+static const bool BOOSTER_ATTACHMENTS = true;
+#include "distance_fields/rocket.hlsl"
+#include "volume/volume_data.hlsl"
+
+struct SceneOutput {
+    float dist;
+    float ao;
+};
+
+SamplerState noise_smp : register(s1);
+Texture3D noise_tex : register(t1);
+
+static const float ROCKET_SIZE = 0.03;
+
+/// MODEL SDF
+void adjustP(inout float3 p) {
+    p -= rocket_base_pos;
+    p.xz = p.zx;
+    p /= ROCKET_SIZE;
+}
+
+SceneOutput fScene(float3 p) {
+    float3 originalP = p;
+    adjustP(p);
+
+    SceneOutput output;
+    float boosterSide;
+    float3 boosterP;
+    fRocket(p, output.dist, output.ao, boosterSide, boosterP);
+
+    // jets
+    float3 jetP = boosterP;
+    jetP.y += BOOSTER_HEIGHT+29.5;
+    float3 noiseP = originalP;
+    noiseP.y *= 30;
+    noiseP.xz *= 3;
+    noiseP.x += 100 + 100 * boosterSide;
+    noiseP.y += rocket_base_pos.y*20;
+    float jetDist = fCone(jetP, 2 + fbm(noiseP, noise_smp, noise_tex)*4, 30);
+    output.dist = min(output.dist, jetDist);
+
+    output.dist *= ROCKET_SIZE;
+    return output;
+}
+
+/// MODEL MATERIAL
+void sceneMaterial(float3 p, float3 n, inout float3 albedo, inout float metallic, inout float roughness, inout float3 emissive) {
+    adjustP(p);
+    float3 baseP = p;
+    rocketMaterial(p, n, albedo, metallic, roughness, emissive);
+
+    float is_exhaust = step(p.y, BODY_GROUND_OFFSET-BODY_HEIGHT) * point_light_flicker;
+    emissive = lerp(emissive, float3(1, 0.484, 0.121)*10, is_exhaust);
+    albedo *= 1 - is_exhaust;
+
+    float bright_bit = 600;// * point_light_flicker; //lerp(80, 200, rand(frameSeed));
+    emissive *= lerp(1, bright_bit, step(abs(baseP.x), 0.3) * step(-0.1, baseP.y));
+}
+
+SamplerState light_smp : register(s0);
+Texture3D light_map : register(t0);
+
+float3 lightScene(float3 p, float3 n, float3 d, float ao) {
+    float3 albedo = 0;
+    float metallic = 0;
+    float roughness = 0;
+    float3 emissive = 0;
+    sceneMaterial(p, n, albedo, metallic, roughness, emissive);
+    
+    float3 v = -d;
+    float3 light_map_pos = mul(float4(p, 1), world_to_light_map).xyz;
+    float2 light_intensities = light_map.SampleLevel(light_smp, light_map_pos, 0).xy;
+
+    float3 direct_light = 0;
+    direct_light += get_light_radiance(
+        n,
+        albedo,
+        metallic,
+        roughness,
+        v,
+        directional_light_direction
+    ) * light_intensities.x * directional_light_color;
+
+    float point_dist = distance(p, point_light_world_pos) * 60;
+    float point_att = 1. / (1 + 0.2*point_dist + 0.03*point_dist*point_dist);
+    float point_ao = 1 - pow(1 - ao, 10);
+    direct_light += get_light_radiance(
+        n,
+        albedo,
+        metallic,
+        roughness,
+        v,
+        normalize(point_light_world_pos - p)
+    ) * light_intensities.y * point_light_color * pow(point_ao, 5) * point_att;
+
+    float3 ambient_color = ambient_light_color*3;
+    ambient_color += light_intensities.x * directional_light_color * albedo;
+    ambient_color += pow(light_intensities.y, 3) * point_att * point_light_color * albedo * 30;
+    ambient_color *= point_ao;
+
+    return direct_light + ambient_color * 0.02 + emissive;
+}
+
+static const int MAX_ITERATIONS = 80;
+
+#include "common/discard_sky.hlsl"
+#include "common/raymarch.hlsl"
+
+void main(VSPostOut input, out float4 color : SV_Target0, out float4 normal : SV_Target1, out float4 world_pos : SV_Target2, out float depth : SV_Depth) {
+    raymarch(input.tex, zRange.y, color, normal, world_pos, depth);
+}

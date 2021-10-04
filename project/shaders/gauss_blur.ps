@@ -1,0 +1,24 @@
+#include "common/frame_data.hlsl"
+#include "common/vs_post_out.hlsl"
+
+static const float COEFFICIENTS[21] = {0.000272337, 0.00089296, 0.002583865, 0.00659813, 0.014869116, 0.029570767, 0.051898313, 0.080381679, 0.109868729, 0.132526984, 0.14107424, 0.132526984, 0.109868729, 0.080381679, 0.051898313, 0.029570767, 0.014869116, 0.00659813, 0.002583865, 0.00089296, 0.000272337};
+static const int NUM_COEFFICIENTS = 21;
+
+
+SamplerState smp : register(s0);
+Texture2D    tex : register(t0);
+
+cbuffer GaussBlurData : register(b1) {
+    float2 targetSize;
+    float2 direction;
+}
+
+float4 main(VSPostOut input) : SV_TARGET {
+    float2 tex_scale = 1 / targetSize;
+
+    float4 val = 0;
+    for (int i = 0; i < NUM_COEFFICIENTS; i++) {
+        val += tex.SampleLevel(smp, input.tex + float(i - NUM_COEFFICIENTS/2) * direction * tex_scale, 0) * COEFFICIENTS[i];
+    }
+    return val;
+}

@@ -1,0 +1,30 @@
+cbuffer VolumeData : register(b2) {
+    matrix density_to_world;
+    matrix scaled_density_to_world;
+    matrix world_to_density;
+    matrix world_to_light_map;
+    matrix scaled_light_map_to_world;
+    matrix world_to_directional_shadow;
+    matrix scaled_directional_shadow_to_world;
+    uint3 directional_shadow_map_size;
+    float point_light_radius;
+    uint3 point_shadow_map_size;
+    float point_light_max_radius;
+    uint3 light_map_size;
+    float light_blur_size;
+    float3 world_density_pos;
+    // pad
+    float3 world_density_size;
+    // pad
+    float3 rocket_base_pos;
+    // pad
+    float3 directional_light_direction;
+    // pad
+    float3 point_light_world_pos;
+    // pad
+    float3 directional_light_color;
+    // pad
+    float3 point_light_color;
+    float point_light_flicker;
+    float3 ambient_light_color;
+}
