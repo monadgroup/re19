@@ -1,3 +1,5 @@
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/monadgroup/re19/blob/main/LICENSE)
+
 # Atlas source code dump
 
 This is a dump of the source code for the engine, graphics tool and player for
